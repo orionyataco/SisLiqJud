@@ -1,11 +1,18 @@
-import React, { useState, useRef } from 'react';
-import { Calculator, FileText, TrendingUp, Save, Download, UploadCloud, X, BookOpen, User, Scale, Settings, Palette, MapPin, Phone, Mail } from 'lucide-react';
-import { LancamentoMensal, ResumoFinal, ParametrosCalculo, VerbaConfig, HistoricoIndices, ConfiguracaoRelatorio } from '../logic/types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Calculator, FileText, TrendingUp, Save, Download, UploadCloud, X, BookOpen, User, Scale, Settings, Palette, MapPin, Phone, Mail, History, Plus } from 'lucide-react';
+import { LancamentoMensal, ResumoFinal, ParametrosCalculo, VerbaConfig, HistoricoIndices, ConfiguracaoRelatorio, CalculoSalvo } from '../logic/types';
 import { calcularDiferencas } from '../logic/calculator';
 import { gerarRelatorioPDF } from '../logic/exporter';
 import { importarIndicesCSV } from '../logic/importer';
+import { salvarCalculo, buscarCalculoPorId } from '../logic/storage';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const CalculadoraJudicial = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const editId = searchParams.get('edit');
+  const [currentId, setCurrentId] = useState<string | null>(editId);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fichaInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +74,61 @@ const CalculadoraJudicial = () => {
     emailEscritorio: 'contato@sisliqjud.com.br',
     corPrimaria: '#1e3a8a',
   });
+
+  // Efeito para carregar cálculo se houver um ID
+  useEffect(() => {
+    if (editId) {
+      const salvo = buscarCalculoPorId(editId);
+      if (salvo) {
+        setParametros(salvo.parametros);
+        setVerbas(salvo.parametros.verbasConfiguradas);
+        setLancamentos(salvo.lancamentos);
+        setCurrentId(editId);
+      }
+    }
+  }, [editId]);
+
+  const handleSalvar = () => {
+    try {
+      const calculo: Omit<CalculoSalvo, 'id' | 'dataCriacao' | 'dataAtualizacao'> & { id?: string } = {
+        id: currentId || undefined,
+        parametros,
+        lancamentos,
+        resumo
+      };
+      const salvo = salvarCalculo(calculo);
+      setCurrentId(salvo.id);
+      alert('Cálculo salvo com sucesso no histórico!');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar o cálculo.');
+    }
+  };
+
+  const handleNovoCalculo = () => {
+    if (window.confirm('Deseja iniciar um novo cálculo? Todas as informações atuais não salvas serão perdidas.')) {
+      setParametros({
+        nomeRequerente: '',
+        nomeRequerido: '',
+        numeroProcesso: '',
+        dataAjuizamento: new Date(),
+        dataCitacao: new Date(),
+        dataSentenca: new Date(),
+        percentualHonorarios: 10,
+        aplicarPrevidencia: true,
+        aplicarIR: true,
+        verbasConfiguradas: [],
+        tramitacao: '',
+        assunto: '',
+        orgaoPrevidenciario: '',
+        observacoesCustomizadas: []
+      });
+      setVerbas([]);
+      setLancamentos([]);
+      setCurrentId(null);
+      navigate('/');
+    }
+  };
 
   const { resultados, resumo } = calcularDiferencas(lancamentos, indices, { ...parametros, verbasConfiguradas: verbas });
 
@@ -330,6 +392,12 @@ const CalculadoraJudicial = () => {
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Gestão de Diferenças Salariais e Rubricas Variáveis</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button className="btn-primary" onClick={handleNovoCalculo} style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Plus size={18} /> Novo Cálculo
+          </button>
+          <button className="btn-primary" onClick={() => navigate('/historico')} style={{ background: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <History size={18} /> Histórico
+          </button>
           <button className="btn-primary" onClick={() => setShowObsModal(true)} style={{ background: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <BookOpen size={18} /> Observações
           </button>
@@ -577,8 +645,12 @@ const CalculadoraJudicial = () => {
             </div>
           </section>
 
-          <button className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-            <Save size={18} /> Salvar Alterações
+          <button 
+            className="btn-primary" 
+            onClick={handleSalvar}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--success)' }}
+          >
+            <Save size={18} /> {currentId ? 'Atualizar Cálculo' : 'Salvar no Histórico'}
           </button>
         </aside>
       </div>

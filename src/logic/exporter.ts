@@ -16,7 +16,7 @@ export const gerarRelatorioPDF = (
   config: ConfiguracaoRelatorio
 ) => {
   const doc = new jsPDF({ orientation: 'landscape' });
-  const cinzaClaro = [241, 245, 249];
+  const cinzaClaro: [number, number, number] = [241, 245, 249];
   const corPrimariaRgb = hexToRgb(config.corPrimaria);
 
   // Cabeçalho Profissional (Ajustado para Landscape)
@@ -167,10 +167,9 @@ export const gerarRelatorioPDF = (
     },
     didDrawPage: (data) => {
       // Rodapé em todas as páginas
-      const str = `Página ${doc.internal.getNumberOfPages()}`;
+      const str = `Página ${doc.getNumberOfPages()}`;
       doc.setFontSize(8);
-      const pageSize = doc.internal.pageSize;
-      const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+      const pageHeight = doc.internal.pageSize.getHeight();
       doc.setTextColor(150, 150, 150);
       doc.text(str, data.settings.margin.left, pageHeight - 10);
       doc.text(`${config.nomeEscritorio} - ${config.emailEscritorio}`, 283, pageHeight - 10, { align: 'right' });

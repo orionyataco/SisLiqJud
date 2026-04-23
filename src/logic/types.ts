@@ -85,3 +85,12 @@ export interface ConfiguracaoRelatorio {
   corPrimaria: string;
   logoBase64?: string;
 }
+
+export interface CalculoSalvo {
+  id: string;
+  dataCriacao: string;
+  dataAtualizacao: string;
+  parametros: ParametrosCalculo;
+  lancamentos: LancamentoMensal[];
+  resumo: ResumoFinal;
+}
