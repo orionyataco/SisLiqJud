@@ -3,7 +3,7 @@ import { Calculator, FileText, TrendingUp, Save, Download, UploadCloud, X, BookO
 import { LancamentoMensal, ResumoFinal, ParametrosCalculo, VerbaConfig, HistoricoIndices, ConfiguracaoRelatorio, CalculoSalvo } from '../logic/types';
 import { calcularDiferencas } from '../logic/calculator';
 import { gerarRelatorioPDF } from '../logic/exporter';
-import { importarIndicesCSV } from '../logic/importer';
+import { importarIndicesCSV, importarFichaFinanceiraCSV } from '../logic/importer';
 import { salvarCalculo, buscarCalculoPorId } from '../logic/storage';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
@@ -130,7 +130,10 @@ const CalculadoraJudicial = () => {
     }
   };
 
-  const { resultados, resumo } = calcularDiferencas(lancamentos, indices, { ...parametros, verbasConfiguradas: verbas });
+  const { resultados, resumo } = React.useMemo(
+    () => calcularDiferencas(lancamentos, indices, { ...parametros, verbasConfiguradas: verbas }),
+    [lancamentos, indices, parametros, verbas]
+  );
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,7 +151,7 @@ const CalculadoraJudicial = () => {
     if (file) {
       try {
         const novosIndices = await importarIndicesCSV(file);
-        setIndices(prev => ({ ...prev, ipcaE: novosIndices }));
+        setIndices(prev => ({ ...prev, [importTarget]: novosIndices }));
         alert(`Sucesso! ${novosIndices.length} índices importados.`);
       } catch (err) {
         alert('Erro ao importar CSV. Verifique o formato.');
@@ -160,8 +163,24 @@ const CalculadoraJudicial = () => {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        // Mock function or actual import logic
-        alert(`Ficha financeira importada com sucesso.`);
+        const fichas = await importarFichaFinanceiraCSV(file);
+        if (fichas.length > 0) {
+          setLancamentos(prev => {
+            const merged = [...prev];
+            fichas.forEach(f => {
+              const idx = merged.findIndex(l => l.competencia === f.competencia);
+              if (idx !== -1) {
+                merged[idx] = { ...merged[idx], ...f };
+              } else {
+                merged.push(f as LancamentoMensal);
+              }
+            });
+            return merged.sort((a, b) => a.competencia.localeCompare(b.competencia));
+          });
+          alert(`${fichas.length} registros importados da ficha financeira.`);
+        } else {
+          alert('Nenhum registro encontrado no CSV.');
+        }
       } catch (err) {
         alert('Erro ao importar Ficha Financeira.');
       }
@@ -383,152 +402,159 @@ const CalculadoraJudicial = () => {
       <input type="file" ref={fichaInputRef} style={{ display: 'none' }} accept=".csv" onChange={handleImportFicha} />
       <input type="file" ref={logoInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleLogoUpload} />
 
-      <header style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
-            <Calculator size={32} />
-            SisLiqJud - Dash de Liquidação
-          </h1>
-          <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Gestão de Diferenças Salariais e Rubricas Variáveis</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn-primary" onClick={handleNovoCalculo} style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Plus size={18} /> Novo Cálculo
-          </button>
-          <button className="btn-primary" onClick={() => navigate('/historico')} style={{ background: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <History size={18} /> Histórico
-          </button>
-          <button className="btn-primary" onClick={() => setShowObsModal(true)} style={{ background: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <BookOpen size={18} /> Observações
-          </button>
-          <button className="btn-primary" onClick={() => setShowConfigModal(true)} style={{ background: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Settings size={18} /> Configurar PDF
-          </button>
-          <button className="btn-primary" onClick={() => setShowVerbaForm(true)} style={{ background: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-             <TrendingUp size={18} /> Adicionar Rubrica
-          </button>
-          <button className="btn-primary" onClick={() => setShowFichaModal(true)} style={{ background: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FileText size={18} /> Ficha Financeira
-          </button>
-          <button className="btn-primary" onClick={() => openImport('ipcaE')} style={{ background: 'var(--secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <UploadCloud size={18} /> Índices
-          </button>
-          <button 
-            className="btn-primary" 
-            onClick={handleExportPDF} 
-            disabled={isExporting}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: isExporting ? 0.7 : 1 }}
-            title="Gerar memória de cálculo em PDF"
-          >
-            {isExporting ? <UploadCloud className="animate-spin" size={18} /> : <Download size={18} />}
-            {isExporting ? 'Processando...' : 'Relatório PDF'}
-          </button>
+      <header style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
+          <div>
+            <h1 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.6rem', margin: 0, fontSize: '1.35rem' }}>
+              <Calculator size={26} />
+              <span>SisLiqJud</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>Sistema de Liquidação Judicial — Cálculo de Diferenças Salariais</p>
+          </div>
+          <div className="header-actions">
+            <div className="action-group">
+              <button className="btn-icon accent" onClick={handleNovoCalculo}>
+                <Plus size="16" /> Novo
+              </button>
+              <button className="btn-icon primary" onClick={() => navigate('/historico')}>
+                <History size="16" /> Histórico
+              </button>
+              <div className="action-divider" />
+              <button className="btn-icon success" onClick={handleSalvar}>
+                <Save size="16" /> {currentId ? 'Atualizar' : 'Salvar'}
+              </button>
+              <button className="btn-icon primary" onClick={handleExportPDF} disabled={isExporting} style={{ opacity: isExporting ? 0.7 : 1 }}>
+                {isExporting ? <UploadCloud size="16" className="animate-spin" /> : <Download size="16" />}
+                {isExporting ? '...' : 'PDF'}
+              </button>
+            </div>
+            <div className="action-group">
+              <button className="btn-icon outline" onClick={() => setShowVerbaForm(true)} title="Adicionar Rubrica">
+                <TrendingUp size="16" /> Rubrica
+              </button>
+              <button className="btn-icon outline" onClick={() => setShowFichaModal(true)} title="Ficha Financeira">
+                <FileText size="16" /> Ficha
+              </button>
+              <button className="btn-icon outline" onClick={() => openImport('ipcaE')} title="Importar Índices">
+                <UploadCloud size="16" /> Índices
+              </button>
+              <div className="action-divider" />
+              <button className="btn-icon outline" onClick={() => setShowObsModal(true)} title="Observações">
+                <BookOpen size="16" /> Obs.
+              </button>
+              <button className="btn-icon outline" onClick={() => setShowConfigModal(true)} title="Configurar PDF">
+                <Settings size="16" /> Config.
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* Dados do Processo no Topo */}
-      <section className="card" style={{ marginBottom: '1.5rem', background: '#fff', borderLeft: '4px solid var(--primary)' }}>
-        <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <BookOpen size={18} /> Informações Básicas do Processo
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem' }}>
-          <div>
-            <label className="input-label">Número do Processo</label>
-            <input type="text" className="input-field" value={parametros.numeroProcesso} placeholder="0000000-00.20XX.X.XX.XXXX" onChange={(e) => setParametros({...parametros, numeroProcesso: e.target.value})} />
-          </div>
-          <div>
-            <label className="input-label">Requerente (Autor)</label>
-            <input type="text" className="input-field" value={parametros.nomeRequerente} placeholder="Nome do Autor" onChange={(e) => setParametros({...parametros, nomeRequerente: e.target.value})} />
-          </div>
-          <div>
-            <label className="input-label">Requerido (Réu)</label>
-            <input type="text" className="input-field" value={parametros.nomeRequerido} placeholder="Nome do Réu" onChange={(e) => setParametros({...parametros, nomeRequerido: e.target.value})} />
-          </div>
-          <div>
-            <label className="input-label">Órgão Previdenciário</label>
-            <input type="text" className="input-field" value={parametros.orgaoPrevidenciario} placeholder="Ex: AMPREV" onChange={(e) => setParametros({...parametros, orgaoPrevidenciario: e.target.value})} />
-          </div>
+      {/* Métricas Rápidas */}
+      <div className="metrics-bar">
+        <div className="metric-card">
+          <span className="metric-label">Lançamentos</span>
+          <span className="metric-value neutral">{lancamentos.length} meses</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Principal Bruto</span>
+          <span className="metric-value neutral">R$ {resumo.totalBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Previdência</span>
+          <span className="metric-value danger">- R$ {resumo.valorPrevidencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">IR (RRA)</span>
+          <span className="metric-value warning">- R$ {resumo.valorIR.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="metric-card" style={{ borderColor: 'var(--primary)', background: '#f0f4ff' }}>
+          <span className="metric-label" style={{ color: 'var(--primary)' }}>Líquido a Receber</span>
+          <span className="metric-value" style={{ color: 'var(--primary)' }}>R$ {resumo.valorLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+      </div>
 
+      {/* Dados do Processo */}
+      <section className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '4px solid var(--primary)' }}>
+        <div className="card-header" style={{ marginBottom: '0.75rem', paddingBottom: '0.5rem' }}>
+          <h3 className="card-title" style={{ fontSize: '0.9rem' }}>
+            <BookOpen size={16} /> Dados do Processo
+          </h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
           <div>
-            <label className="input-label">Assunto</label>
-            <input type="text" className="input-field" value={parametros.assunto} placeholder="Ex: Progressão Salarial" onChange={(e) => setParametros({...parametros, assunto: e.target.value})} />
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Nº do Processo</label>
+            <input type="text" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.numeroProcesso} placeholder="0000000-00.20XX.X.XX.XXXX" onChange={(e) => setParametros({...parametros, numeroProcesso: e.target.value})} />
           </div>
           <div>
-            <label className="input-label">Tramitação</label>
-            <input type="text" className="input-field" value={parametros.tramitacao} placeholder="Ex: PJe" onChange={(e) => setParametros({...parametros, tramitacao: e.target.value})} />
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Requerente</label>
+            <input type="text" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.nomeRequerente} placeholder="Nome do Autor" onChange={(e) => setParametros({...parametros, nomeRequerente: e.target.value})} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            <div>
-              <label className="input-label">Data Ajuizamento</label>
-              <input type="date" className="input-field" value={parametros.dataAjuizamento.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataAjuizamento: new Date(e.target.value)})} />
-            </div>
-            <div>
-              <label className="input-label">Data Citação</label>
-              <input type="date" className="input-field" value={parametros.dataCitacao.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataCitacao: new Date(e.target.value)})} />
-            </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Requerido</label>
+            <input type="text" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.nomeRequerido} placeholder="Nome do Réu" onChange={(e) => setParametros({...parametros, nomeRequerido: e.target.value})} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            <div>
-              <label className="input-label">Data Sentença</label>
-              <input type="date" className="input-field" value={parametros.dataSentenca.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataSentenca: new Date(e.target.value)})} />
-            </div>
-            <div>
-              <label className="input-label">% Honorários</label>
-              <input type="number" className="input-field" value={parametros.percentualHonorarios} onChange={(e) => setParametros({...parametros, percentualHonorarios: parseFloat(e.target.value) || 0})} />
-            </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Assunto</label>
+            <input type="text" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.assunto} placeholder="Ex: Progressão Salarial" onChange={(e) => setParametros({...parametros, assunto: e.target.value})} />
           </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Ajuizamento</label>
+            <input type="date" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.dataAjuizamento.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataAjuizamento: new Date(e.target.value)})} />
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', gridColumn: 'span 1' }}>
-              <input 
-                type="checkbox" 
-                id="check-prev"
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                checked={parametros.aplicarPrevidencia} 
-                onChange={(e) => setParametros({...parametros, aplicarPrevidencia: e.target.checked})} 
-              />
-              <label htmlFor="check-prev" style={{ fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer' }}>Calcular Previdência</label>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', gridColumn: 'span 2' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <input 
-                  type="checkbox" 
-                  id="check-ir"
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  checked={parametros.aplicarIR} 
-                  onChange={(e) => setParametros({...parametros, aplicarIR: e.target.checked})} 
-                />
-                <label htmlFor="check-ir" style={{ fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer' }}>Calcular Imposto de Renda (RRA)</label>
-              </div>
-              {!parametros.aplicarIR && (
-                <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600, marginLeft: '1.85rem', background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px', width: 'fit-content' }}>
-                  Isento conforme IN nº 1.500/2014 (Sistemática RRA)
-                </span>
-              )}
-            </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Citação</label>
+            <input type="date" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.dataCitacao.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataCitacao: new Date(e.target.value)})} />
           </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>Sentença</label>
+            <input type="date" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.dataSentenca.toISOString().split('T')[0]} onChange={(e) => setParametros({...parametros, dataSentenca: new Date(e.target.value)})} />
+          </div>
+          <div>
+            <label className="input-label" style={{ fontSize: '0.75rem' }}>% Honorários</label>
+            <input type="number" className="input-field" style={{ fontSize: '0.85rem', padding: '0.4rem 0.5rem' }} value={parametros.percentualHonorarios} onChange={(e) => setParametros({...parametros, percentualHonorarios: parseFloat(e.target.value) || 0})} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={parametros.aplicarPrevidencia} onChange={(e) => setParametros({...parametros, aplicarPrevidencia: e.target.checked})} style={{ width: '16px', height: '16px' }} />
+            Calcular Previdência
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={parametros.aplicarIR} onChange={(e) => setParametros({...parametros, aplicarIR: e.target.checked})} style={{ width: '16px', height: '16px' }} />
+            Calcular IR (RRA)
+          </label>
+          {!parametros.aplicarIR && (
+            <span className="badge badge-green">Isento IN 1.500/2014</span>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+            <input type="text" className="input-field" style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem', width: '140px' }} value={parametros.tramitacao || ''} placeholder="Tramitação" onChange={(e) => setParametros({...parametros, tramitacao: e.target.value})} />
+            <input type="text" className="input-field" style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem', width: '140px' }} value={parametros.orgaoPrevidenciario || ''} placeholder="Órgão Prev." onChange={(e) => setParametros({...parametros, orgaoPrevidenciario: e.target.value})} />
+          </div>
+        </div>
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem' }}>
         <div className="main-content">
-          <section className="card">
-            <h3 style={{ marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <TrendingUp size={20} /> 1. Apuração de Valores Base (Diferenças)
-            </h3>
-            <div className="card" style={{ padding: '0', overflow: 'hidden', marginBottom: '2rem' }}>
+          {/* Tabela 1: Apuração Base */}
+          <section className="card" style={{ padding: '1.25rem 1.5rem' }}>
+            <div className="card-header">
+              <h3 className="card-title"><TrendingUp size={18} /> Apuração de Valores Base</h3>
+              <span className="badge badge-blue">Diferenças Salariais</span>
+            </div>
+            <div className="table-wrapper">
               <table className="grid-launch">
                 <thead>
                   <tr>
                     <th>Comp.</th>
-                    <th>Vcto Devido</th>
-                    <th>Vcto Recebido</th>
-                    <th>Diff Venc.</th>
-                    <th style={{ background: '#ecfdf5', color: '#065f46' }}>Rubricas Trib.</th>
-                    <th style={{ background: '#fefce8', color: '#854d0e' }}>Rubricas Isentas</th>
+                    <th>Devido</th>
+                    <th>Recebido</th>
+                    <th>Diferença</th>
+                    <th>Rubricas Trib.</th>
+                    <th>Rubricas Isentas</th>
                     <th>Reflexos</th>
-                    <th style={{ background: '#dcfce7', color: '#166534' }}>Base Tributável</th>
-                    <th style={{ background: 'var(--primary)', color: 'white' }}>Base Total</th>
+                    <th>Base Tributável</th>
+                    <th>Base Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -539,57 +565,56 @@ const CalculadoraJudicial = () => {
                     const baseTotalMes = res.diferencaNominal + reflexosMes;
                     return (
                       <tr key={i}>
-                        <td style={{ fontWeight: 600 }}>{res.competencia}</td>
-                        <td>{res.valorDevido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td>{res.valorRecebido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: 'var(--accent)', fontWeight: 500 }}>{(res.valorDevido - res.valorRecebido).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: '#059669' }}>{rubricasTrib.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: '#d97706' }}>{rubricasIsentas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: 'var(--secondary)' }}>{reflexosMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: '#16a34a', fontWeight: 500 }}>{res.baseTributavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ fontWeight: 'bold', background: '#f8fafc' }}>R$ {baseTotalMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td style={{ fontWeight: 600, fontSize: '0.8rem' }}>{res.competencia}</td>
+                        <td>{res.valorDevido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>{res.valorRecebido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style={{ color: 'var(--accent)', fontWeight: 600 }}>{(res.valorDevido - res.valorRecebido).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style={{ color: '#059669' }}>{rubricasTrib > 0 ? rubricasTrib.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+                        <td style={{ color: '#d97706' }}>{rubricasIsentas > 0 ? rubricasIsentas.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+                        <td style={{ color: 'var(--secondary)' }}>{reflexosMes > 0 ? reflexosMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+                        <td style={{ color: '#16a34a', fontWeight: 500 }}>{res.baseTributavel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style={{ fontWeight: 700, background: '#f8fafc' }}>R$ {baseTotalMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+          </section>
 
-            <h3 style={{ marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <TrendingUp size={20} /> 2. Atualizações e Liquidação
-            </h3>
-            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+          {/* Tabela 2: Atualizações */}
+          <section className="card" style={{ padding: '1.25rem 1.5rem' }}>
+            <div className="card-header">
+              <h3 className="card-title"><TrendingUp size={18} /> Atualizações e Liquidação</h3>
+              <span className="badge badge-green">Correção Monetária + Juros</span>
+            </div>
+            <div className="table-wrapper">
               <table className="grid-launch">
                 <thead>
                   <tr>
                     <th>Comp.</th>
-                    <th>Índice/Correção</th>
-                    <th style={{ background: '#dcfce7', color: '#166534' }}>Base Trib. Corr.</th>
-                    <th style={{ background: '#f0f9ff', color: '#0369a1' }}>Base Total Corr.</th>
-                    <th style={{ background: '#dcfce7', color: '#166534' }}>Juros (Base Trib.)</th>
-                    <th style={{ background: '#f0f9ff', color: '#0369a1' }}>Juros (Base Total)</th>
-                    <th style={{ color: 'var(--error)' }}>Previdência</th>
-                    <th style={{ background: 'var(--primary)', color: 'white' }}>Total Líquido</th>
+                    <th>Índice</th>
+                    <th>Base Trib. Corr.</th>
+                    <th>Base Total Corr.</th>
+                    <th>Juros</th>
+                    <th>Previdência</th>
+                    <th>Total Líquido</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {resultados.map((res, i) => {
-                    const jurosTributavel = res.baseTributavelCorrigida * res.jurosAcumulados;
-                    return (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 600 }}>{res.competencia}</td>
-                        <td style={{ fontSize: '0.8rem' }}>{res.isSelic ? <span className="badge-selic">SELIC (EC113)</span> : <span className="badge-ipca">IPCA-E + Juros</span>}</td>
-                        <td style={{ color: '#16a34a' }}>{res.baseTributavelCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: '#0284c7', fontWeight: 500 }}>{res.valorCorrigido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: '#16a34a' }}>{jurosTributavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: 'var(--accent)' }}>{res.valorJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style={{ color: 'var(--error)' }}>
-                          {res.valorPrevidenciaCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td style={{ fontWeight: 'bold', background: '#f8fafc' }}>R$ {res.totalDoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      </tr>
-                    );
-                  })}
+                  {resultados.map((res, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 600, fontSize: '0.8rem' }}>{res.competencia}</td>
+                      <td>{res.isSelic ? <span className="badge badge-green">SELIC</span> : <span className="badge badge-blue">IPCA-E</span>}</td>
+                      <td style={{ color: '#16a34a' }}>{res.baseTributavelCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ color: '#0284c7', fontWeight: 500 }}>{res.valorCorrigido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ color: 'var(--accent)' }}>{res.valorJuros > 0 ? res.valorJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+                      <td style={{ color: 'var(--error)' }}>
+                        {res.valorPrevidenciaCorrigida > 0 ? res.valorPrevidenciaCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}
+                      </td>
+                      <td style={{ fontWeight: 700, background: '#f0f4ff', color: 'var(--primary)' }}>R$ {res.totalDoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -597,58 +622,64 @@ const CalculadoraJudicial = () => {
         </div>
 
         <aside className="sidebar">
-          {/* Rubricas Ativas na Sidebar agora */}
-          <section className="card" style={{ background: '#f8fafc' }}>
-            <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Scale size={18} /> Rubricas Ativas
+          {/* Rubricas Ativas */}
+          <div className="sidebar-section" style={{ padding: '1rem' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)' }}>
+              <Scale size={15} /> Rubricas Ativas
             </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {verbas.map(v => (
-                <div key={v.id} style={{ background: 'white', border: '1px solid var(--border)', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: 600 }}>{v.nome}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{v.tipo === 'PERCENTUAL' ? `${v.valor}%` : `R$ ${v.valor}`} • {v.isTributavel ? 'Trib.' : 'Isento'}</span>
+                <div key={v.id} className="rubric-item">
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{v.nome}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '0.4rem' }}>
+                      {v.tipo === 'PERCENTUAL' ? `${v.valor}%` : `R$ ${v.valor.toFixed(2)}`} • {v.isTributavel ? 'Trib.' : 'Isento'}
+                    </span>
                   </div>
-                  <button onClick={() => removeVerba(v.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}>
-                    <X size={14} />
+                  <button onClick={() => removeVerba(v.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '2px' }}>
+                    <X size={13} />
                   </button>
                 </div>
               ))}
+              {verbas.length === 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', margin: '0.5rem 0' }}>
+                  Nenhuma rubrica configurada
+                </p>
+              )}
             </div>
-          </section>
+          </div>
 
-          <section className="card" style={{ background: 'var(--primary)', color: 'white' }}>
-            <h4 style={{ margin: '0 0 1rem 0', opacity: 0.8 }}>Resumo do Cálculo</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <small style={{ opacity: 0.7 }}>Bruto Total</small>
-                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>R$ {resumo.totalBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              </div>
-              <div>
-                <small style={{ opacity: 0.7 }}>Honorários ({parametros.percentualHonorarios}%)</small>
-                <div style={{ fontSize: '1rem' }}>+ R$ {resumo.honorariosAdvocaticios.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <div>
-                  <small style={{ opacity: 0.7 }}>Previdência</small>
-                  <div style={{ fontSize: '0.9rem', color: '#ffb3b3' }}>- R$ {resumo.valorPrevidencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                </div>
-                <div>
-                  <small style={{ opacity: 0.7 }}>IR (RRA)</small>
-                  <div style={{ fontSize: '0.9rem', color: '#ffb3b3' }}>- R$ {resumo.valorIR.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                </div>
-              </div>
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '0.5rem' }}>
-                <small style={{ opacity: 1, fontWeight: 'bold' }}>LÍQUIDO FINAL</small>
-                <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>R$ {resumo.valorLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              </div>
+          {/* Resumo do Cálculo */}
+          <div className="summary-card">
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', opacity: 0.8, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Calculator size={15} /> Resumo do Cálculo
+            </h4>
+            <div className="summary-row">
+              <span className="summary-label">Bruto Total</span>
+              <span className="summary-value">R$ {resumo.totalBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
-          </section>
+            <div className="summary-row">
+              <span className="summary-label">Honorários ({parametros.percentualHonorarios}%)</span>
+              <span className="summary-value" style={{ color: '#93c5fd' }}>R$ {resumo.honorariosAdvocaticios.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">Previdência</span>
+              <span className="summary-value" style={{ color: '#fca5a5' }}>- R$ {resumo.valorPrevidencia.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">IR (RRA)</span>
+              <span className="summary-value" style={{ color: '#fca5a5' }}>- R$ {resumo.valorIR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', marginTop: '0.5rem', paddingTop: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.7rem', opacity: 0.7, marginBottom: '0.15rem' }}>VALOR LÍQUIDO A RECEBER</div>
+              <div className="summary-total">R$ {resumo.valorLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
 
           <button 
-            className="btn-primary" 
+            className="btn-icon success" 
             onClick={handleSalvar}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--success)' }}
+            style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}
           >
             <Save size={18} /> {currentId ? 'Atualizar Cálculo' : 'Salvar no Histórico'}
           </button>

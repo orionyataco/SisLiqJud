@@ -76,7 +76,7 @@ export function calcularDiferencas(
 
       const jurosMora = (isAfter(dataComp, parametros.dataCitacao) || dataComp.getTime() === startOfMonth(parametros.dataCitacao).getTime())
         ? toDec(calcularJurosAcumulados(dataComp, indices.jurosMora))
-        : toDec(calcularJurosDesdeCitacao(parametros.dataCitacao, indices.jurosMora));
+        : toDec(0);
       
       jurosMoraObj = jurosMora;
       valorJuros = valorCorrigido.times(jurosMora).toDecimalPlaces(2);
@@ -135,6 +135,8 @@ export function calcularDiferencas(
     ? baseTributavelTotal.minus(valorPrevidencia).times(0.15).toDecimalPlaces(2) 
     : toDec(0);
 
+  const valorLiquido = totalBruto.minus(valorPrevidencia).minus(valorIR).minus(honorariosAdvocaticios);
+
   const resumo: ResumoFinal = {
     totalPrincipalCorrigido: totalPrincipalCorrigido.toNumber(),
     totalReflexo13: totalReflexo13.toNumber(),
@@ -144,7 +146,7 @@ export function calcularDiferencas(
     honorariosAdvocaticios: honorariosAdvocaticios.toNumber(),
     valorPrevidencia: valorPrevidencia.toNumber(),
     valorIR: valorIR.toNumber(),
-    valorLiquido: totalBruto.minus(valorPrevidencia).minus(valorIR).plus(honorariosAdvocaticios).toNumber()
+    valorLiquido: valorLiquido.toNumber()
   };
 
   return { resultados, resumo };
@@ -169,8 +171,4 @@ function calcularJurosAcumulados(data: Date, juros: IndiceMensal[]): number {
   return index ? index.valor : 0; 
 }
 
-function calcularJurosDesdeCitacao(dataCitacao: Date, juros: IndiceMensal[]): number {
-  const comp = format(dataCitacao, 'yyyy-MM');
-  const index = juros.find(i => i.competencia === comp);
-  return index ? index.valor : 0;
-}
+

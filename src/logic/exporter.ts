@@ -85,7 +85,7 @@ export const gerarRelatorioPDF = (
     head: [['ITEM DO CÁLCULO', 'VALOR APURADO (R$)']],
     body: [
       ['Bruto Total Devido', { content: resumo.totalBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold' } }],
-      ['Previdência Estadual', parametros.aplicarPrevidencia ? `(-) ${resumo.valorPrevidencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'NÃO APLICADA'],
+      ['Previdência Social', parametros.aplicarPrevidencia ? `(-) ${resumo.valorPrevidencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'NÃO APLICADA'],
       ['Imposto de Renda (RRA)', parametros.aplicarIR ? `(-) ${resumo.valorIR.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'ISENTO (IN 1500/2014)'],
       ['Honorários Advocatícios', resumo.honorariosAdvocaticios.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })],
       ['VALOR LÍQUIDO A RECEBER', { content: resumo.valorLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fontSize: 9, fillColor: cinzaClaro } }],

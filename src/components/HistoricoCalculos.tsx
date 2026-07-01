@@ -29,15 +29,15 @@ const HistoricoCalculos: React.FC = () => {
 
   return (
     <div className="dashboard-container">
-      <header style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
+      <header style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem' }}>
+        <div style={{ flex: '1 1 auto', minWidth: '300px' }}>
           <h1 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
-            <Calculator size={32} />
-            SisLiqJud - Histórico de Cálculos
+            <Calculator size={32} style={{ flexShrink: 0 }} />
+            <span>SisLiqJud - Histórico de Cálculos</span>
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Gerencie e recupere liquidações salvas no sistema</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
           <button 
             className="btn-primary" 
             onClick={() => navigate('/')}
