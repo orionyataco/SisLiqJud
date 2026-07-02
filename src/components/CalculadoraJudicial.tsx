@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Calculator, FileText, TrendingUp, Save, Download, UploadCloud, X, BookOpen, User, Scale, Settings, Palette, MapPin, Phone, Mail, History, Plus } from 'lucide-react';
-import { LancamentoMensal, ResumoFinal, ParametrosCalculo, VerbaConfig, HistoricoIndices, ConfiguracaoRelatorio, CalculoSalvo } from '../logic/types';
+import { LancamentoMensal, ResumoFinal, ParametrosCalculo, VerbaConfig, HistoricoIndices, ConfiguracaoRelatorio, CalculoSalvo, ModalidadeCalculo, MODALIDADE_LABELS, MODALIDADE_DESCRIPTIONS } from '../logic/types';
 import { calcularDiferencas } from '../logic/calculator';
 import { gerarRelatorioPDF } from '../logic/exporter';
 import { importarIndicesCSV, importarFichaFinanceiraCSV } from '../logic/importer';
@@ -30,13 +30,16 @@ const CalculadoraJudicial = () => {
     incideSobre: 'SALARIO_BASE'
   });
   const [novaObs, setNovaObs] = useState({ titulo: '', descricao: '' });
-  const [importTarget, setImportTarget] = useState<'ipcaE' | 'selic' | 'jurosMora'>('ipcaE');
+  const [importTarget, setImportTarget] = useState<'ipcaE' | 'selic' | 'jurosMora' | 'ipca' | 'inpc' | 'poupanca'>('ipcaE');
   const [pasteData, setPasteData] = useState('');
   const [pasteFicha, setPasteFicha] = useState('');
   const [indices, setIndices] = useState<HistoricoIndices>({
     ipcaE: [],
     selic: [],
-    jurosMora: []
+    jurosMora: [],
+    ipca: [],
+    inpc: [],
+    poupanca: []
   });
 
   const [verbas, setVerbas] = useState<VerbaConfig[]>([
@@ -51,6 +54,7 @@ const CalculadoraJudicial = () => {
   ]);
 
   const [parametros, setParametros] = useState<ParametrosCalculo>({
+    modalidade: 'SIMPLES',
     nomeRequerente: '',
     nomeRequerido: '',
     numeroProcesso: '',
@@ -108,6 +112,7 @@ const CalculadoraJudicial = () => {
   const handleNovoCalculo = () => {
     if (window.confirm('Deseja iniciar um novo cálculo? Todas as informações atuais não salvas serão perdidas.')) {
       setParametros({
+        modalidade: 'SIMPLES',
         nomeRequerente: '',
         nomeRequerido: '',
         numeroProcesso: '',
@@ -344,7 +349,7 @@ const CalculadoraJudicial = () => {
     setShowFichaModal(false);
   };
 
-  const openImport = (target: 'ipcaE' | 'selic' | 'jurosMora') => {
+  const openImport = (target: 'ipcaE' | 'selic' | 'jurosMora' | 'ipca' | 'inpc' | 'poupanca') => {
     setImportTarget(target);
     setShowImportModal(true);
   };
@@ -481,6 +486,34 @@ const CalculadoraJudicial = () => {
             <BookOpen size={16} /> Dados do Processo
           </h3>
         </div>
+        <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+          <label className="input-label" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '0.35rem' }}>Modalidade de Cálculo</label>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {(['SIMPLES', 'BANCOS', 'FAZENDA_PUBLICA'] as ModalidadeCalculo[]).map(mod => (
+              <button
+                key={mod}
+                onClick={() => setParametros({...parametros, modalidade: mod})}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.8rem',
+                  background: parametros.modalidade === mod ? 'var(--primary)' : '#f1f5f9',
+                  color: parametros.modalidade === mod ? 'white' : '#334155',
+                  border: parametros.modalidade === mod ? '2px solid var(--primary)' : '2px solid #e2e8f0',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: parametros.modalidade === mod ? 600 : 400,
+                  transition: 'all 0.15s'
+                }}
+                title={MODALIDADE_DESCRIPTIONS[mod]}
+              >
+                {MODALIDADE_LABELS[mod]}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem', marginBottom: 0 }}>
+            {MODALIDADE_DESCRIPTIONS[parametros.modalidade]}
+          </p>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
           <div>
             <label className="input-label" style={{ fontSize: '0.75rem' }}>Nº do Processo</label>
@@ -589,34 +622,43 @@ const CalculadoraJudicial = () => {
               <span className="badge badge-green">Correção Monetária + Juros</span>
             </div>
             <div className="table-wrapper">
-              <table className="grid-launch">
-                <thead>
-                  <tr>
-                    <th>Comp.</th>
-                    <th>Índice</th>
-                    <th>Base Trib. Corr.</th>
-                    <th>Base Total Corr.</th>
-                    <th>Juros</th>
-                    <th>Previdência</th>
-                    <th>Total Líquido</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resultados.map((res, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600, fontSize: '0.8rem' }}>{res.competencia}</td>
-                      <td>{res.isSelic ? <span className="badge badge-green">SELIC</span> : <span className="badge badge-blue">IPCA-E</span>}</td>
-                      <td style={{ color: '#16a34a' }}>{res.baseTributavelCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ color: '#0284c7', fontWeight: 500 }}>{res.valorCorrigido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ color: 'var(--accent)' }}>{res.valorJuros > 0 ? res.valorJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
-                      <td style={{ color: 'var(--error)' }}>
-                        {res.valorPrevidenciaCorrigida > 0 ? res.valorPrevidenciaCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}
-                      </td>
-                      <td style={{ fontWeight: 700, background: '#f0f4ff', color: 'var(--primary)' }}>R$ {res.totalDoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  <table className="grid-launch">
+                    <thead>
+                      <tr>
+                        <th>Comp.</th>
+                        <th>Índice</th>
+                        <th>Fator</th>
+                        <th>Juros %</th>
+                        <th>Base Corr.</th>
+                        <th>Juros</th>
+                        <th>Previdência</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultados.map((res, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 600, fontSize: '0.8rem' }}>{res.competencia}</td>
+                          <td>
+                            {res.indiceUtilizado.includes('SELIC')
+                              ? <span className="badge badge-green">SELIC</span>
+                              : res.indiceUtilizado.includes('IPCA')
+                                ? <span className="badge badge-blue">IPCA{res.indiceUtilizado.includes('IPCA-E') ? '-E' : ''}</span>
+                                : <span className="badge badge-blue">{res.indiceUtilizado}</span>
+                            }
+                          </td>
+                          <td>{res.fatorCorrecao.toFixed(4)}</td>
+                          <td>{res.taxaJuros > 0 ? `${(res.taxaJuros * 100).toFixed(2)}%` : '—'}</td>
+                          <td style={{ color: '#0284c7', fontWeight: 500 }}>{res.valorCorrigido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td style={{ color: 'var(--accent)' }}>{res.valorJuros > 0 ? res.valorJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+                          <td style={{ color: 'var(--error)' }}>
+                            {res.valorPrevidenciaCorrigida > 0 ? res.valorPrevidenciaCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}
+                          </td>
+                          <td style={{ fontWeight: 700, background: '#f0f4ff', color: 'var(--primary)' }}>R$ {res.totalDoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
             </div>
           </section>
         </div>
@@ -693,10 +735,13 @@ const CalculadoraJudicial = () => {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               Cole abaixo o conteúdo copiado do PDF. O sistema detectará automaticamente anos e blocos de valores.
             </p>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.35rem', marginTop: '1rem', flexWrap: 'wrap' }}>
               <button onClick={() => setImportTarget('ipcaE')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'ipcaE' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'ipcaE' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>IPCA-E</button>
               <button onClick={() => setImportTarget('selic')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'selic' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'selic' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>SELIC</button>
-              <button onClick={() => setImportTarget('jurosMora')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'jurosMora' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'jurosMora' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>JUROS</button>
+              <button onClick={() => setImportTarget('jurosMora')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'jurosMora' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'jurosMora' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>JUROS 1%</button>
+              <button onClick={() => setImportTarget('ipca')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'ipca' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'ipca' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>IPCA</button>
+              <button onClick={() => setImportTarget('inpc')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'inpc' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'inpc' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>INPC</button>
+              <button onClick={() => setImportTarget('poupanca')} style={{ padding: '4px 8px', fontSize: '0.7rem', background: importTarget === 'poupanca' ? 'var(--primary)' : '#e2e8f0', color: importTarget === 'poupanca' ? 'white' : 'black', border: 'none', borderRadius: '4px' }}>POUPANÇA</button>
             </div>
             <textarea className="textArea-import" placeholder="Cole aqui os dados do PDF..." value={pasteData} onChange={(e) => setPasteData(e.target.value)} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>

@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ResultadoMensal, ResumoFinal, ParametrosCalculo, ConfiguracaoRelatorio } from './types';
+import { ResultadoMensal, ResumoFinal, ParametrosCalculo, ConfiguracaoRelatorio, MODALIDADE_LABELS } from './types';
 
 const hexToRgb = (hex: string): [number, number, number] => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -19,10 +19,9 @@ export const gerarRelatorioPDF = (
   const cinzaClaro: [number, number, number] = [241, 245, 249];
   const corPrimariaRgb = hexToRgb(config.corPrimaria);
 
-  // Cabeçalho Profissional (Ajustado para Landscape)
   doc.setFillColor(corPrimariaRgb[0], corPrimariaRgb[1], corPrimariaRgb[2]);
   doc.rect(0, 0, 297, 25, 'F');
-  
+
   if (config.logoBase64) {
     try {
       doc.addImage(config.logoBase64, 'PNG', 14, 5, 15, 15);
@@ -42,12 +41,10 @@ export const gerarRelatorioPDF = (
     doc.text('Sistema de Liquidação de Sentença Judicial - Profissional', 14, 20);
   }
 
-  // Dados de Contato no Cabeçalho (Direita)
   doc.setFontSize(7);
   doc.text(config.enderecoEscritorio, 283, 10, { align: 'right' });
   doc.text(`${config.telefoneEscritorio} | ${config.emailEscritorio}`, 283, 15, { align: 'right' });
 
-  // Informações do Processo
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -60,24 +57,20 @@ export const gerarRelatorioPDF = (
   const col3 = 205;
   let currentY = 41;
 
-  // Linha 1
   doc.text(`Processo nº: ${parametros.numeroProcesso || 'N/I'}`, col1, currentY);
   doc.text(`Requerente: ${parametros.nomeRequerente || 'N/I'}`, col2, currentY);
   doc.text(`Requerido: ${parametros.nomeRequerido || 'N/I'}`, col3, currentY);
 
-  // Linha 2
   currentY += 6;
-  doc.text(`Assunto: ${parametros.assunto || 'N/I'}`, col1, currentY);
-  doc.text(`Tramitação: ${parametros.tramitacao || 'N/I'}`, col2, currentY);
-  doc.text(`Órgão Prev.: ${parametros.orgaoPrevidenciario || 'N/I'}`, col3, currentY);
+  doc.text(`Modalidade: ${MODALIDADE_LABELS[parametros.modalidade] || 'N/I'}`, col1, currentY);
+  doc.text(`Assunto: ${parametros.assunto || 'N/I'}`, col2, currentY);
+  doc.text(`Tramitação: ${parametros.tramitacao || 'N/I'}`, col3, currentY);
 
-  // Linha 3
   currentY += 6;
   doc.text(`Citação: ${parametros.dataCitacao.toLocaleDateString('pt-BR')}`, col1, currentY);
   doc.text(`Sentença: ${parametros.dataSentenca.toLocaleDateString('pt-BR')}`, col2, currentY);
   doc.text(`Data do Relatório: ${new Date().toLocaleDateString('pt-BR')}`, col3, currentY);
 
-  // Tabela de Resumo Final
   autoTable(doc, {
     startY: 60,
     margin: { left: 14, right: 14 },
@@ -98,7 +91,6 @@ export const gerarRelatorioPDF = (
 
   let maxYAposResumo = (doc as any).lastAutoTable.finalY;
 
-  // Tabela de Observações Dinâmicas (AO LADO DO RESUMO)
   if (parametros.observacoesCustomizadas && parametros.observacoesCustomizadas.length > 0) {
     const obsBody = parametros.observacoesCustomizadas.map(obs => [obs.titulo, obs.descricao]);
 
@@ -114,26 +106,27 @@ export const gerarRelatorioPDF = (
         1: { halign: 'left' }
       }
     });
-    
+
     if ((doc as any).lastAutoTable.finalY > maxYAposResumo) {
       maxYAposResumo = (doc as any).lastAutoTable.finalY;
     }
   }
 
-  // Tabela Detalhada
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text('TABELA DETALHADA', 14, maxYAposResumo + 10);
-  
+
   const headersRubricas = parametros.verbasConfiguradas.map(v => v.nome);
-  const head = [['Comp.', 'Venc. Dev.', 'Venc. Rec.', 'Dif. Venc.', ...headersRubricas, '13º', 'Férias', 'Tipo Índ.', 'Fator Corr.', 'Juros %', 'Base Trib. Atu.', 'Base Total Atu.', 'Juros (Base Trib.)', 'Juros (Base Total)', 'Previdência', 'Total']];
+  const head: string[][] = [[
+    'Comp.', 'Venc. Dev.', 'Venc. Rec.', 'Dif. Venc.', ...headersRubricas,
+    '13º', 'Férias', 'Índice', 'Fator Corr.', 'Juros (Taxa)',
+    'Base Total Corr.', 'Juros', 'Previdência', 'Total'
+  ]];
 
   const body = resultados.map((r) => {
-    const valoresRubricas = parametros.verbasConfiguradas.map(v => 
+    const valoresRubricas = parametros.verbasConfiguradas.map(v =>
       (r.verbasDiferencas?.[v.id] || 0)
     ).map(v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-
-    const jurosTributavel = r.baseTributavelCorrigida * r.jurosAcumulados;
 
     return [
       r.competencia,
@@ -143,12 +136,10 @@ export const gerarRelatorioPDF = (
       ...valoresRubricas,
       r.reflexo13.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       r.reflexoFerias.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      r.isSelic ? 'SELIC' : 'IPCA-E',
+      r.indiceUtilizado,
       r.fatorCorrecao.toFixed(4),
-      `${(r.jurosAcumulados * 100).toFixed(2)}%`,
-      r.baseTributavelCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      `${(r.taxaJuros * 100).toFixed(2)}%`,
       r.valorCorrigido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      jurosTributavel.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       r.valorJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       r.valorPrevidenciaCorrigida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       r.totalDoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -161,12 +152,11 @@ export const gerarRelatorioPDF = (
     body: body,
     styles: { fontSize: 5, cellPadding: 0.5, halign: 'center' },
     headStyles: { fillColor: [100, 116, 139], halign: 'center' },
-    columnStyles: { 
+    columnStyles: {
       0: { cellWidth: 12 },
       [head[0].length - 1]: { fontStyle: 'bold' }
     },
     didDrawPage: (data) => {
-      // Rodapé em todas as páginas
       const str = `Página ${doc.getNumberOfPages()}`;
       doc.setFontSize(8);
       const pageHeight = doc.internal.pageSize.getHeight();
